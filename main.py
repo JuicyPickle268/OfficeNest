@@ -24,7 +24,6 @@ from adapters.clipboard_bridge import ClipboardBridge
 from adapters.file_bridge import FileBridge
 from adapters.excel_sync import ExcelSync
 from adapters.file_registry import FileRegistry
-from adapters.improvement_tracker import ImprovementTracker
 from adapters.llm.deepseek_client import DeepSeekClient
 from adapters.feishu.gateway import FeishuGateway
 from core.mother.engine import MotherEngine
@@ -33,14 +32,12 @@ from core.mother.tool_registry import ToolRegistry
 from skills.excel_skill import ExcelSkill
 from skills.word_skill import WordSkill
 from skills.clipboard_skill import ClipboardSkill
-from skills.improvement_skill import ImprovementSkill
 from skills.system_skill import SystemSkill
 from skills.chart_skill import ChartSkill
 from skills.vision_skill import VisionSkill
 from skills.workflow_skill import WorkflowSkill, WorkflowStore
 from skills.kb_skill import KnowledgeBaseSkill
 from adapters.knowledge_base import KnowledgeBase
-from adapters.prompt_optimizer import PromptOptimizer
 from adapters.opt_store import OptStore
 from skills.opt_skill import OptimizationSkill
 from adapters.scratch_store import ScratchStore
@@ -70,7 +67,6 @@ class MotherApp:
         self.files = FileBridge()
         self.excel_sync = ExcelSync(self.cfg.storage.db_path)
         self.file_registry = FileRegistry(self.cfg.storage.db_path)
-        self.improvements = ImprovementTracker(self.cfg.storage.db_path)
         self.memory = SQLiteMemoryStore(self.cfg.storage.db_path)
 
         # 飞书
@@ -97,7 +93,6 @@ class MotherApp:
                                        workbooks_dir=self.cfg.office.workbooks_dir))
         self.tools.register(WordSkill(self.office))
         self.tools.register(ClipboardSkill())
-        self.tools.register(ImprovementSkill(self.improvements))
         self.tools.register(SystemSkill(self.file_registry,
             zhihu_key=getattr(self.cfg.llm, 'zhihu_api_key', '')))
         self.tools.register(ChartSkill())
@@ -115,7 +110,6 @@ class MotherApp:
 
         # 提示词优化器
         self.opt_store = OptStore(self.cfg.storage.db_path)
-        self.optimizer = PromptOptimizer(self.opt_store)
         self.tools.register(OptimizationSkill(self.opt_store))
 
         # 临时草稿纸

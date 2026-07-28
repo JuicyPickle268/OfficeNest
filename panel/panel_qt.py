@@ -630,9 +630,6 @@ class MotherPanelQt(QMainWindow):
                     self._update_status(mod_name, "● 已安装")
                 except ImportError:
                     self._update_status(mod_name, "● 未安装")
-            # 检查提示词优化建议
-            if self._app and self._app.optimizer.get_pending():
-                self._update_status("建议", f"💡 {len(self._app.optimizer.get_pending())}")
         except RuntimeError:
             pass
 
@@ -1157,53 +1154,6 @@ class MotherPanelQt(QMainWindow):
             if self._app and self._app.kb:
                 self._app.kb.remove(source)
             self._refresh_knowledge_base()
-
-    # ═══════════════════════════════════════
-    # Tab 4: 待优化需求（废弃）
-    # ═══════════════════════════════════════
-
-    def _build_improvements(self):
-        tab = QWidget()
-        layout = QVBoxLayout(tab)
-        self._imp_tree = QTreeWidget()
-        self._imp_tree.setColumnCount(4)
-        self._imp_tree.setHeaderLabels(["ID", "标题", "描述", "状态"])
-        self._imp_tree.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
-        self._imp_tree.customContextMenuRequested.connect(self._imp_menu)
-        layout.addWidget(self._imp_tree)
-        btn = QPushButton("刷新")
-        btn.clicked.connect(self._refresh_imp)
-        layout.addWidget(btn)
-        return tab
-
-    def _refresh_imp(self):
-        self._imp_tree.clear()
-        if not self._app:
-            return
-        try:
-            for it in self._app.improvements.list_all():
-                QTreeWidgetItem(self._imp_tree, [it["id"][:12], it["title"],
-                                it.get("description", "")[:60], it["status"]])
-        except Exception:
-            pass
-
-    def _imp_menu(self, pos):
-        item = self._imp_tree.itemAt(pos)
-        if not item:
-            return
-        imp_id = item.text(0)
-        menu = QMenu()
-        action = menu.addAction("✅ 标记为已解决")
-        action.triggered.connect(lambda: self._resolve_imp(imp_id))
-        menu.exec(self._imp_tree.viewport().mapToGlobal(pos))
-
-    def _resolve_imp(self, imp_id: str):
-        if self._app:
-            for it in self._app.improvements.list_all():
-                if it["id"].startswith(imp_id):
-                    self._app.improvements.resolve(it["id"])
-                    break
-        self._refresh_imp()
 
     # ═══════════════════════════════════════
     # Tab 3: 考试中心
