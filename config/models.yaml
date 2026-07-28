@@ -1,0 +1,53 @@
+current: glm-5.2
+providers:
+  deepseek:
+    base_url: https://api.deepseek.com/v1
+    api_key_env: DEEPSEEK_API_KEY
+    models:
+    - name: deepseek-v4-pro
+      tags:
+      - reasoning
+      - slow
+      - powerful
+    - name: deepseek-v4-flash
+      tags:
+      - fast
+      - cheap
+    - name: deepseek-chat
+      tags:
+      - general
+      - cheap
+  openai:
+    base_url: https://api.openai.com/v1
+    api_key_env: OPENAI_API_KEY
+    models:
+    - name: gpt-4o
+      tags:
+      - vision
+      - reasoning
+    - name: gpt-4o-mini
+      tags:
+      - fast
+      - cheap
+  glm:
+    base_url: https://open.bigmodel.cn/api/paas/v4
+    api_key_env: GLM_API_KEY
+    models:
+    - name: glm-4-flash
+      tags:
+      - fast
+      - cheap
+      - chinese
+    - name: glm-4.6v-flash
+      tags:
+      - vision
+      - chinese
+  zhipu:
+    models:
+    - name: glm-5.2
+      tags:
+      - flagship
+      - 1M-context
+      - coding-agent
+    base_url: https://open.bigmodel.cn/api/paas/v4/
+    api_key_env: ZHIPU_API_KEY
