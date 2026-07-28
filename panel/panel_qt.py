@@ -214,7 +214,7 @@ class MotherPanelQt(QMainWindow):
         self.setCentralWidget(splitter)
 
         # 立即建空壳标签页
-        tab_names = ["仪表盘", "日志", "用户", "知识库", "设置"]
+        tab_names = ["仪表盘", "日志", "建议", "知识库", "设置"]
         for name in tab_names:
             ph = QLabel("加载中...")
             ph.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -223,7 +223,6 @@ class MotherPanelQt(QMainWindow):
         self._dash_buffer: StreamBuffer | None = None
         self._tab_loaded = {i: False for i in range(5)}
         self._pinned_file = ""
-        self._current_user = "default"
         self._last_at_text = ""  # 上次 @ 的会话，下次自动填充
 
         self._signal_fill_at.connect(self._auto_fill_at)
@@ -385,77 +384,6 @@ class MotherPanelQt(QMainWindow):
         self._update_status("引擎", f"● {provider}/{model}")
         self._log("INFO", f"模型已切换: {provider}/{model}")
 
-    # ── 用户管理 ──
-
-    def _refresh_user_dropdown(self):
-        self._user_dropdown.blockSignals(True)
-        self._user_dropdown.clear()
-        self._user_ids = ["default"]
-        self._user_dropdown.addItem("👤 默认用户", "default")
-        if self._app and hasattr(self._app, 'user_store'):
-            try:
-                for u in self._app.user_store.list_users():
-                    if u["id"] != "default":
-                        self._user_dropdown.addItem(f"👤 {u['name']}", u["id"])
-                        self._user_ids.append(u["id"])
-            except Exception:
-                pass
-        idx = self._user_dropdown.findData(self._current_user)
-        if idx >= 0:
-            self._user_dropdown.setCurrentIndex(idx)
-        self._user_dropdown.blockSignals(False)
-
-    def _on_user_changed(self, _idx: int):
-        uid = self._user_dropdown.currentData()
-        if uid and uid != self._current_user:
-            self._current_user = uid
-            self._log("INFO", f"👤 切换用户: {uid}")
-
-    def _user_menu(self, pos):
-        menu = QMenu()
-        act_new = menu.addAction("➕ 新建用户")
-        act_rename = menu.addAction("✏️ 重命名")
-        act_del = menu.addAction("🗑 删除")
-        action = menu.exec(self._user_dropdown.viewport().mapToGlobal(pos))
-        uid = self._user_dropdown.currentData()
-        if not uid or not self._app:
-            return
-        if action == act_new:
-            self._new_user()
-        elif action == act_rename and uid != "default":
-            self._rename_user(uid)
-        elif action == act_del and uid != "default":
-            self._delete_user(uid)
-
-    def _new_user(self):
-        from PySide6.QtWidgets import QInputDialog
-        name, ok = QInputDialog.getText(self, "新建用户", "用户名:")
-        if ok and name.strip():
-            uid = self._app.user_store.create(name.strip())
-            self._current_user = uid
-            self._refresh_user_dropdown()
-            self._refresh_user_profile()
-            self._log("INFO", f"👤 新建用户: {name}")
-
-    def _rename_user(self, uid: str):
-        from PySide6.QtWidgets import QInputDialog
-        old = self._user_dropdown.currentText().replace("👤 ", "")
-        name, ok = QInputDialog.getText(self, "重命名", "新名称:", text=old)
-        if ok and name.strip():
-            self._app.user_store.rename(uid, name.strip())
-            self._refresh_user_dropdown()
-            self._refresh_user_profile()
-
-    def _delete_user(self, uid: str):
-        name = self._user_dropdown.currentText().replace("👤 ", "")
-        r = QMessageBox.question(self, "确认删除", f"删除用户「{name}」？")
-        if r == QMessageBox.StandardButton.Yes:
-            self._app.user_store.delete(uid)
-            if self._current_user == uid:
-                self._current_user = "default"
-            self._refresh_user_dropdown()
-            self._refresh_user_profile()
-
     # ═══════════════════════════════════════
     # 标签页懒加载
     # ═══════════════════════════════════════
@@ -464,7 +392,7 @@ class MotherPanelQt(QMainWindow):
         if index < 0 or self._tab_loaded.get(index):
             return
         self._tab_loaded[index] = True
-        builders = [None, self._build_log, self._build_user_profile, self._build_knowledge_base, self._build_settings]
+        builders = [None, self._build_log, self._build_suggestions, self._build_knowledge_base, self._build_settings]
         if index < len(builders) and builders[index]:
             w = builders[index]()
             self._replace_tab(index, w, self._tabs.tabText(index))
@@ -517,17 +445,6 @@ class MotherPanelQt(QMainWindow):
         self._refresh_model_dropdown()
         self._model_dropdown.currentTextChanged.connect(self._on_model_changed)
         btn_row.addWidget(self._model_dropdown)
-        self._user_dropdown = QComboBox()
-        self._user_dropdown.setMinimumWidth(100)
-        self._user_dropdown.setStyleSheet(
-            "QComboBox { background-color: #2d2d2d; color: #d4d4d4; border: 1px solid #444; padding: 2px; }"
-        )
-        self._user_dropdown.addItem("默认用户")
-        self._user_dropdown.setToolTip("切换用户 | 右键管理")
-        self._user_dropdown.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
-        self._user_dropdown.customContextMenuRequested.connect(self._user_menu)
-        self._user_dropdown.currentIndexChanged.connect(self._on_user_changed)
-        btn_row.addWidget(self._user_dropdown)
         self.btn_stop = QPushButton("■ 中断")
         self.btn_stop.clicked.connect(self._stop_engine)
         self.btn_web = QPushButton("🌐")
@@ -677,7 +594,6 @@ class MotherPanelQt(QMainWindow):
         # 加载会话列表和历史
         self._refresh_sessions()
         self._load_history()
-        self._refresh_user_dropdown()
         if self._app.feishu:
             self._app.feishu.start()
             self._update_status("飞书", "● 连接中...")
@@ -1008,80 +924,116 @@ class MotherPanelQt(QMainWindow):
             QTreeWidgetItem(self._log_tree, [ts_str, etype.split(".")[-1][:12], str(data)[:80]])
 
     # ═══════════════════════════════════════
-    # Tab 2: 用户偏好
+    # Tab 2: 优化建议
     # ═══════════════════════════════════════
 
-    def _build_user_profile(self):
+    def _build_suggestions(self):
         tab = QWidget()
         layout = QVBoxLayout(tab)
+
+        # 工具栏：筛选 + 清空
         toolbar = QHBoxLayout()
-        btn_new = QPushButton("＋ 新建用户")
-        btn_new.clicked.connect(self._new_user)
-        toolbar.addWidget(btn_new)
+        toolbar.addWidget(QLabel("工具:"))
+        self._sug_filter = QComboBox()
+        self._sug_filter.addItem("全部")
+        self._sug_filter.currentIndexChanged.connect(lambda: self._refresh_suggestions())
+        toolbar.addWidget(self._sug_filter)
         toolbar.addStretch()
+        btn_clear = QPushButton("清空")
+        btn_clear.clicked.connect(self._clear_suggestions)
+        toolbar.addWidget(btn_clear)
+        btn_refresh = QPushButton("刷新")
+        btn_refresh.clicked.connect(self._refresh_suggestions)
+        toolbar.addWidget(btn_refresh)
         layout.addLayout(toolbar)
-        # 用户列表
-        self._user_list = QTreeWidget()
-        self._user_list.setColumnCount(4)
-        self._user_list.setHeaderLabels(["用户名", "ID", "偏好", "默认会话"])
-        self._user_list.header().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
-        self._user_list.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
-        self._user_list.customContextMenuRequested.connect(self._user_list_menu)
-        self._user_list.itemClicked.connect(self._on_user_item_clicked)
-        layout.addWidget(self._user_list, 2)
-        # 偏好详情
-        self._user_pref_tree = QTreeWidget()
-        self._user_pref_tree.setColumnCount(2)
-        self._user_pref_tree.setHeaderLabels(["偏好键", "偏好值"])
-        self._user_pref_tree.header().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
-        layout.addWidget(self._user_pref_tree, 1)
+
+        self._sug_tree = QTreeWidget()
+        self._sug_tree.setColumnCount(4)
+        self._sug_tree.setHeaderLabels(["工具", "建议内容", "原因", "严重度"])
+        self._sug_tree.header().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
+        self._sug_tree.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self._sug_tree.customContextMenuRequested.connect(self._sug_menu)
+        layout.addWidget(self._sug_tree)
         return tab
 
-    def _refresh_user_profile(self):
-        self._user_list.clear()
-        self._user_pref_tree.clear()
-        if not self._app or not hasattr(self._app, 'user_store'):
-            return
+    def _refresh_suggestions(self):
+        self._sug_tree.clear()
+        # 同步工具注册表到筛选下拉
+        self._sync_tool_filter()
+
+        tool_filter = self._sug_filter.currentText()
+        if tool_filter == "全部":
+            tool_filter = ""
+
         try:
-            users = self._app.user_store.list_users()
-            for u in users:
-                prefs = u.get("preferences", {})
-                pref_count = len(prefs)
-                item = QTreeWidgetItem([u["name"], u["id"], str(pref_count), u.get("default_session", "default")])
-                item.setData(0, Qt.ItemDataRole.UserRole, u["id"])
-                if u["id"] == self._current_user:
-                    for c in range(4):
-                        item.setBackground(c, QColor("#1a3a1a"))
-                self._user_list.addTopLevelItem(item)
-        except Exception:
-            pass
-
-    def _on_user_item_clicked(self, item: QTreeWidgetItem):
-        uid = item.data(0, Qt.ItemDataRole.UserRole)
-        self._user_pref_tree.clear()
-        if self._app and hasattr(self._app, 'user_store'):
-            prefs = self._app.user_store.get_preferences(uid)
-            if prefs:
-                for k, v in prefs.items():
-                    QTreeWidgetItem(self._user_pref_tree, [k, v])
+            if self._app and self._app.opt_store:
+                rows = self._app.opt_store.get_all(tool_filter)
             else:
-                QTreeWidgetItem(self._user_pref_tree, ["（空）", "在聊天中直接告诉 AI 偏好即可自动写入"])
+                import sqlite3
+                db_path = str(Path(self._config_path).parent / "data" / "mother.db")
+                conn = sqlite3.connect(db_path)
+                if tool_filter:
+                    rows = conn.execute(
+                        "SELECT id, tool, suggestion, reason, severity FROM opt_suggestions "
+                        "WHERE applied=0 AND tool=? ORDER BY severity DESC, created_at DESC",
+                        (tool_filter,)
+                    ).fetchall()
+                    rows = [{"id": r[0], "tool": r[1], "suggestion": r[2], "reason": r[3], "severity": r[4]} for r in rows]
+                else:
+                    rows = conn.execute(
+                        "SELECT id, tool, suggestion, reason, severity FROM opt_suggestions "
+                        "WHERE applied=0 ORDER BY severity DESC, created_at DESC"
+                    ).fetchall()
+                    rows = [{"id": r[0], "tool": r[1], "suggestion": r[2], "reason": r[3], "severity": r[4]} for r in rows]
+                conn.close()
+        except Exception:
+            return
 
-    def _user_list_menu(self, pos):
-        item = self._user_list.itemAt(pos)
+        for r in rows:
+            stars = "★" * r["severity"] + "☆" * (3 - r["severity"])
+            item = QTreeWidgetItem([r["tool"], r["suggestion"], r.get("reason", ""), stars])
+            item.setData(0, Qt.ItemDataRole.UserRole, r["id"])
+            self._sug_tree.addTopLevelItem(item)
+
+    def _sync_tool_filter(self):
+        """同步工具注册表到筛选下拉框。"""
+        current = self._sug_filter.currentText()
+        self._sug_filter.blockSignals(True)
+        self._sug_filter.clear()
+        self._sug_filter.addItem("全部")
+        if self._app and self._app.tools:
+            tool_names = sorted(set(
+                t["function"]["name"] for t in self._app.tools.list_tools()
+            ))
+            self._sug_filter.addItems(tool_names)
+        idx = self._sug_filter.findText(current)
+        if idx >= 0:
+            self._sug_filter.setCurrentIndex(idx)
+        self._sug_filter.blockSignals(False)
+
+    def _sug_menu(self, pos):
+        item = self._sug_tree.itemAt(pos)
         if not item:
             return
-        uid = item.data(0, Qt.ItemDataRole.UserRole)
-        if not uid or uid == "default":
-            return
+        sug_id = item.data(0, Qt.ItemDataRole.UserRole)
         menu = QMenu()
-        act_rename = menu.addAction("✏️ 重命名")
-        act_del = menu.addAction("🗑 删除")
-        action = menu.exec(self._user_list.viewport().mapToGlobal(pos))
-        if action == act_rename:
-            self._rename_user(uid)
-        elif action == act_del:
-            self._delete_user(uid)
+        action = menu.addAction("🗑 删除此建议")
+        action.triggered.connect(lambda: self._delete_suggestion(sug_id))
+        menu.exec(self._sug_tree.viewport().mapToGlobal(pos))
+
+    def _delete_suggestion(self, sug_id: str):
+        if self._app and self._app.opt_store:
+            self._app.opt_store.delete(sug_id)
+        self._refresh_suggestions()
+
+    def _clear_suggestions(self):
+        reply = QMessageBox.question(self, "确认清空",
+            "确定要清空所有未应用的建议吗？",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+        if reply == QMessageBox.StandardButton.Yes:
+            if self._app and self._app.opt_store:
+                self._app.opt_store.clear_pending()
+            self._refresh_suggestions()
 
     # ═══════════════════════════════════════
     # Tab 3: 知识库
