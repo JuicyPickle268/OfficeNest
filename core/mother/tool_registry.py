@@ -28,8 +28,13 @@ class ToolRegistry(IToolRegistry):
             }
 
     def list_tools(self, context_hint: str = "") -> list[dict]:
-        """返回 OpenAI function-calling 格式的工具列表。"""
-        return [t["schema"] for t in self._tools.values()]
+        """返回 OpenAI function-calling 格式的工具列表。自动注入 name 到 function 对象。"""
+        result = []
+        for name, t in self._tools.items():
+            schema = dict(t["schema"])  # 浅拷贝，不污染原数据
+            schema.setdefault("function", {})["name"] = name
+            result.append(schema)
+        return result
 
     async def execute(self, call: ToolCall) -> ToolResult:
         """
