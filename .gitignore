@@ -1,0 +1,14 @@
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+dist/
+build/
+*.spec
+data/
+output/
+workbooks/
+.idea/
+.zcode/
+config/default.yaml
+.env

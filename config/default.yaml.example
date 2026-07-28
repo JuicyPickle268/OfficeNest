@@ -1,0 +1,38 @@
+app:
+  name: OfficeNest
+  env: dev
+  log_level: INFO
+feishu:
+  app_id: ""
+  app_secret: ""
+  enable_websocket: false
+llm:
+  provider: deepseek
+  api_key: "sk-你的密钥"
+  model: deepseek-v4-pro
+  base_url: https://api.deepseek.com/v1
+  max_rounds: 20
+  context_rounds: 0
+  temperature: 0.3
+  glm_api_key: ""
+  sense_api_key: ""
+  zhihu_api_key: ""
+  proxy_sub_url: ""
+  kb_use_deepseek: false
+  lang: zh
+  optimize_enabled: true
+office:
+  workbooks_dir: ./workbooks
+  templates_dir: ./templates
+  output_dir: ./output
+  auto_backup: true
+  confirm_dangerous: true
+  auto_preview_word: true
+storage:
+  db_path: ./data/mother.db
+panel:
+  window_title: OfficeNest 控制台
+  window_size:
+  - 900
+  - 600
+  refresh_interval_ms: 1000
