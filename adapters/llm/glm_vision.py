@@ -7,7 +7,7 @@ GLM 视觉客户端——使用官方 zai-sdk（同步）。
 class GLMVisionClient:
     """智谱 GLM-4.6V，官方 zai-sdk，同步调用。"""
 
-    def __init__(self, api_key: str, model: str = "glm-4.6v-flash"):
+    def __init__(self, api_key: str, model: str = "glm-4.6v"):
         self._api_key = api_key
         self._model = model
 

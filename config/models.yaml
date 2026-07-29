@@ -38,10 +38,10 @@ providers:
       - fast
       - cheap
       - chinese
-    - name: glm-4.6v-flash
-      tags:
-      - vision
-      - chinese
+    - name: glm-4.6v
+        tags:
+        - vision
+        - chinese
   zhipu:
     models:
     - name: glm-5.2

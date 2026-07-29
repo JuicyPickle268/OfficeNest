@@ -2,7 +2,6 @@
 视觉 Skill：截图 Excel/Word → 多 provider 视觉分析（GLM优先，商汤备用）。
 """
 import sys
-import asyncio
 import base64
 import io
 from pathlib import Path
@@ -242,7 +241,7 @@ class VisionSkill(BaseSkill):
         except Exception as e:
             return f"❌ 读取格式失败: {e}"
 
-    def excel_understand(self, filepath: str) -> str:
+    async def excel_understand(self, filepath: str) -> str:
         """首次打开 Excel → LLM 生成自然语言使用说明书。"""
         # 先拿结构数据
         raw = self.excel_describe_format(filepath)
@@ -258,12 +257,7 @@ class VisionSkill(BaseSkill):
                 {"role": "system", "content": sys_prompt},
                 {"role": "user", "content": f"以下是一个 Excel 文件的结构描述，请按规范输出使用说明书：\n\n{raw}"},
             ]
-            # 跑一次同步的 LLM 调用
-            loop = asyncio.new_event_loop()
-            resp = loop.run_until_complete(
-                self._llm.chat(messages, temperature=0.2)
-            )
-            loop.close()
+            resp = await self._llm.chat(messages, temperature=0.2)
             return f"📋 文件理解（LLM）:\n{resp.content}\n\n（后续操作请据此说明书进行，无需重复调 understand）"
         except Exception as e:
             return raw + f"\n\n（理解失败: {e}，请手动分析上述结构）"
