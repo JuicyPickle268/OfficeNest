@@ -38,6 +38,7 @@ from skills.vision_skill import VisionSkill
 from skills.workflow_skill import WorkflowSkill, WorkflowStore
 from skills.kb_skill import KnowledgeBaseSkill
 from adapters.knowledge_base import KnowledgeBase
+from adapters.vision_queue import VisionQueue
 from adapters.opt_store import OptStore
 from skills.opt_skill import OptimizationSkill
 from adapters.scratch_store import ScratchStore
@@ -96,10 +97,18 @@ class MotherApp:
         self.tools.register(SystemSkill(self.file_registry,
             zhihu_key=getattr(self.cfg.llm, 'zhihu_api_key', '')))
         self.tools.register(ChartSkill())
+        # 视觉队列
+        from adapters.llm.vision_client import VisionClient
+        self.vision_client = VisionClient(
+            glm_key=getattr(self.cfg.llm, 'glm_api_key', ''),
+            sense_key=getattr(self.cfg.llm, 'sense_api_key', ''),
+        )
+        self.vision_queue = VisionQueue(self.cfg.storage.db_path, self.vision_client)
+        self.vision_queue.start()
         self.tools.register(VisionSkill(
             glm_api_key=getattr(self.cfg.llm, 'glm_api_key', ''),
             sense_api_key=getattr(self.cfg.llm, 'sense_api_key', ''),
-            llm_client=self.llm,
+            llm_client=self.llm, queue=self.vision_queue,
         ))
         self._workflow_store = WorkflowStore(self.cfg.storage.db_path)
         self.tools.register(WorkflowSkill(self._workflow_store))
@@ -199,6 +208,8 @@ class MotherApp:
         shutdown_agent()
         self.office._sessions.clear()
         self.memory.close()
+        if hasattr(self, 'vision_queue'):
+            self.vision_queue.close()
 
     async def process(self, user_input: str, on_token: callable = None,
                       session_id: str = "default", pinned_file: str = "") -> dict:

@@ -12,13 +12,15 @@ from adapters.llm.vision_client import VisionClient
 class VisionSkill(BaseSkill):
 
     def __init__(self, glm_api_key: str = "", sense_api_key: str = "",
-                 llm_client=None):
+                 llm_client=None, queue=None):
         self._vision = VisionClient(
             glm_key=glm_api_key,
             sense_key=sense_api_key,
             priority=["glm", "sensetime"],
         )
-        self._llm = llm_client  # 用于 excel_understand
+        self._llm = llm_client
+        self._queue = queue
+        self._call_count = 0  # 同一轮调用计数器
 
     @property
     def name(self) -> str:
@@ -31,6 +33,8 @@ class VisionSkill(BaseSkill):
                  "image_b64": {"type": "string", "description": "base64 图片"},
                  "prompt": {"type": "string", "description": "分析指令"},
              }, ["image_b64", "prompt"])},
+            {"name": "vision_status", "fn": self.vision_status,
+             "schema": self._s("查看视觉任务队列状态", {}, [])},
             {"name": "excel_describe_format", "fn": self.excel_describe_format,
              "schema": self._s("直接读取 Excel 格式信息（字体/颜色/边框/合并），无需截图", {
                  "filepath": {"type": "string", "description": "文件路径"},
@@ -152,11 +156,31 @@ class VisionSkill(BaseSkill):
     # ── 分析 ──
 
     async def vision_analyze(self, image_b64: str, prompt: str) -> str:
-        """调视觉模型分析图片（GLM优先，商汤备用）。"""
+        """调视觉模型分析图片。同一轮第3次起自动入队列。"""
+        self._call_count += 1
+        if self._queue and self._call_count > 2:
+            tid = self._queue.add(image_b64, prompt)
+            status = self._queue.status()
+            return f"📬 已加入视觉队列(#{status['pending']}) ID:{tid[:12]}"
         try:
             return await self._vision.analyze(image_b64, prompt)
         except Exception as e:
             return f"❌ 视觉分析失败: {e}"
+
+    def vision_status(self) -> str:
+        """查看视觉任务队列状态。"""
+        if not self._queue:
+            return "（视觉队列未启用）"
+        s = self._queue.status()
+        lines = [f"📊 视觉队列: {s['done']}完成 {s['pending']}待处理 {s['failed']}失败"]
+        if s['pending'] > 0:
+            lines.append(f"   后台处理中，预计{s['pending']*3}秒完成")
+        if s['failed'] > 0:
+            results = self._queue.get_results(5)
+            for r in results:
+                if r['status'] == 'failed':
+                    lines.append(f"   ❌ {r['id'][:12]}: {r['error'][:80]}")
+        return "\n".join(lines)
 
     def excel_describe_format(self, filepath: str, sheet: str = "", range: str = "") -> str:
         """读取 Excel 的完整结构：表头/列名/数据验证/公式/合并/冻结/空行/行数。"""

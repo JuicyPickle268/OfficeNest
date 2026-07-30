@@ -1,14 +1,7 @@
 """
-Mother v2 Qt 面板（PySide6）v2。
-窗口即刻出→后台加载配置→仪表盘首帧渲染。
+OfficeNest Qt 面板 v3 —— 单屏仪表盘 + 弹窗。
 """
-import sys
-import os
-import json
-import asyncio
-import threading
-import traceback
-import warnings
+import sys, os, json, asyncio, threading, traceback, re, warnings
 from pathlib import Path
 from datetime import datetime
 
@@ -18,145 +11,34 @@ warnings.filterwarnings("ignore", message=".*SSEDecoder.*")
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from PySide6.QtWidgets import (
-    QMainWindow, QTabWidget, QWidget, QVBoxLayout, QHBoxLayout,
-    QTextEdit, QLineEdit, QPushButton, QLabel, QSpinBox, QCheckBox,
+    QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
+    QTextEdit, QPushButton, QLabel, QSpinBox, QCheckBox,
     QComboBox, QTreeWidget, QTreeWidgetItem, QHeaderView, QApplication,
-    QMessageBox, QSplitter, QMenu, QListWidget, QListWidgetItem, QCompleter,
+    QMessageBox, QSplitter, QMenu, QListWidget, QListWidgetItem, QCompleter, QDialog,
+    QDialogButtonBox, QInputDialog,
 )
 from PySide6.QtCore import Qt, QTimer, Signal, QThread, QStringListModel, QMimeData
 from PySide6.QtGui import QFont, QTextCursor, QColor, QTextCharFormat, QPixmap, QImage
 
-
-class StreamBuffer:
-    """线程安全的流式缓冲。主线程定时器轮询，工作线程只管 push。"""
-    def __init__(self, widget: QTextEdit, flush_ms: int = 50):
-        self._w = widget
-        self._buf: list[tuple[str, str]] = []
-        self._hidden: list[str] = []  # 隐藏的思考内容（折叠时暂存）
-        self._lock = threading.Lock()
-        self._active = True
-        self._show_thinking = True
-        self._timer = QTimer()
-        self._timer.setInterval(flush_ms)
-        self._timer.timeout.connect(self._flush)
-        self._timer.start()
-
-    def feed(self, tag: str, text: str):
-        if not self._active:
-            return
-        with self._lock:
-            self._buf.append((tag, text))
-
-    def feed_line(self, tag: str, text: str):
-        self.feed(tag, text + "\n")
-
-    def set_thinking_visible(self, visible: bool):
-        self._show_thinking = visible
-        if visible:
-            with self._lock:
-                for text in self._hidden:
-                    self._buf.append(("THINK", text))
-                self._hidden.clear()
-
-    def _flush(self):
-        if not self._active:
-            return
-        with self._lock:
-            if not self._buf:
-                return
-            buf = self._buf
-            self._buf = []
-        try:
-            cursor = self._w.textCursor()
-            cursor.movePosition(QTextCursor.MoveOperation.End)
-            colors = {
-                "USER": "#ce9178", "BOT": "#39ff14", "THINK": "#569cd6",
-                "TOOL": "#dcdcaa", "CHART": "#f0a0ff", "ERROR": "#f44747",
-                "INFO": "#4ec9b0", "TS": "#808080",
-                "TASK": "#ce9178", "MOTHER": "#39ff14",
-                "MOTHER_THINK": "#4a8a5e", "EXAMINER": "#569cd6",
-                "EXAMINER_THINK": "#3a5f8a", "SCORE": "#dcdcaa",
-                "PASS": "#4ec9b0", "FAIL": "#f44747",
-            }
-            for tag, text in buf:
-                if tag == "THINK" and not self._show_thinking:
-                    self._hidden.append(text)
-                    continue
-                fmt = QTextCharFormat()
-                if tag in colors:
-                    fmt.setForeground(QColor(colors[tag]))
-                cursor.insertText(text, fmt)
-            self._w.setTextCursor(cursor)
-            self._w.ensureCursorVisible()
-        except RuntimeError:
-            self._active = False
-
-    def flush_now(self):
-        self._flush()
-
-    def stop(self):
-        self._active = False
-        self._timer.stop()
-
-
-class DropLineEdit(QLineEdit):
-    """支持拖放文件 + 粘贴图片的输入框。"""
-
-    image_pasted = Signal(str)  # base64 图片
-
-    def __init__(self, parent=None):
-        super().__init__(parent)
-        self.setAcceptDrops(True)
-
-    def dragEnterEvent(self, event):
-        if event.mimeData().hasUrls() or event.mimeData().hasImage():
-            event.acceptProposedAction()
-
-    def dropEvent(self, event):
-        md = event.mimeData()
-        if md.hasUrls():
-            for url in md.urls():
-                path = url.toLocalFile()
-                if path:
-                    self.setText(path)
-                    self.returnPressed.emit()
-                    return
-        elif md.hasImage():
-            self._handle_image(md)
-
-    def insertFromMimeData(self, source: QMimeData):
-        """Ctrl+V 粘贴拦截。"""
-        if source.hasImage():
-            self._handle_image(source)
-        elif source.hasUrls():
-            for url in source.urls():
-                path = url.toLocalFile()
-                if path:
-                    self.setText(path)
-                    self.returnPressed.emit()
-                    return
-        else:
-            super().insertFromMimeData(source)
-
-    def _handle_image(self, md: QMimeData):
-        img = md.imageData()
-        if isinstance(img, QImage):
-            pix = QPixmap.fromImage(img)
-        else:
-            pix = QPixmap(md.text()) if md.hasText() else QPixmap()
-        if not pix.isNull():
-            # 压缩到 1024px 宽
-            if pix.width() > 1024:
-                pix = pix.scaledToWidth(1024, Qt.TransformationMode.SmoothTransformation)
-            ba = pix.toImage().saveToBuffer("PNG")
-            import base64
-            b64 = base64.b64encode(ba.data()).decode()
-            self.setText(f"看一下这张图片")
-            self.image_pasted.emit(b64)
-            self.returnPressed.emit()
+from panel.widgets import StreamBuffer, DropLineEdit
 
 
 class MotherPanelQt(QMainWindow):
+    """
+    OfficeNest Qt 面板 —— 单屏仪表盘 + 弹窗。
+
+    布局:
+        左侧侧边栏（会话列表 + 📋📚⚙＋按钮）
+        右侧主区域（聊天区 + 输入框 + 工具栏）
+
+    生命周期:
+        __init__ → _init_async → _build_dashboard → _start_engine
+
+    关键组件:
+        StreamBuffer   — 流式文本渲染（见 panel/widgets.py）
+        DropLineEdit   — 拖放文件 + 粘贴图片（见 panel/widgets.py）
+        _send_command  — 消息发送入口（单Agent / 多Agent 路由）
+    """
 
     _signal_fill_at = Signal()
 
@@ -173,7 +55,6 @@ class MotherPanelQt(QMainWindow):
         self.logger = None
         self._app = None
         self._event_count = 0
-        self._tab_loaded = {i: False for i in range(6)}
 
         self.setWindowTitle("OfficeNest")
         self.resize(1100, 720)
@@ -181,7 +62,7 @@ class MotherPanelQt(QMainWindow):
         self._current_session = "default"
         self._session_names: list[str] = []
 
-        # 左右分栏：侧边栏 + 标签页
+        # 左右分栏：侧边栏 + 仪表盘
         splitter = QSplitter(Qt.Orientation.Horizontal)
 
         # 左栏：会话侧边栏
@@ -200,34 +81,29 @@ class MotherPanelQt(QMainWindow):
         self._session_list.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self._session_list.customContextMenuRequested.connect(self._session_menu)
         side_layout.addWidget(self._session_list, 1)
-        btn_new = QPushButton("＋ 新建会话")
-        btn_new.clicked.connect(self._new_session)
-        side_layout.addWidget(btn_new)
+        # 底部弹窗按钮
+        btn_row = QHBoxLayout()
+        for text, handler in [("📋", self._show_log), ("📚", self._show_kb), ("⚙", self._show_settings)]:
+            b = QPushButton(text); b.setFixedWidth(36); b.setToolTip(text); b.clicked.connect(handler)
+            btn_row.addWidget(b)
+        btn_new = QPushButton("＋"); btn_new.clicked.connect(self._new_session)
+        btn_row.addWidget(btn_new)
+        side_layout.addLayout(btn_row)
         splitter.addWidget(self._sidebar)
 
-        # 右栏：原有标签页
-        self._tabs = QTabWidget()
-        self._tabs.currentChanged.connect(self._on_tab_changed)
-        splitter.addWidget(self._tabs)
+        # 右栏：仪表盘
+        self._dash = QWidget()
+        splitter.addWidget(self._dash)
         splitter.setSizes([180, 920])
-
         self.setCentralWidget(splitter)
 
-        # 立即建空壳标签页
-        tab_names = ["仪表盘", "日志", "建议", "知识库", "设置"]
-        for name in tab_names:
-            ph = QLabel("加载中...")
-            ph.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            self._tabs.addTab(ph, name)
-
         self._dash_buffer: StreamBuffer | None = None
-        self._tab_loaded = {i: False for i in range(5)}
         self._pinned_file = ""
-        self._last_at_text = ""  # 上次 @ 的会话，下次自动填充
+        self._last_at_text = ""
 
         self._signal_fill_at.connect(self._auto_fill_at)
 
-        # 窗口先出，50ms 后异步加载配置+仪表盘
+        # 50ms 后异步构建仪表盘
         QTimer.singleShot(50, self._init_async)
 
     # ═══════════════════════════════════════
@@ -385,21 +261,8 @@ class MotherPanelQt(QMainWindow):
         self._log("INFO", f"模型已切换: {provider}/{model}")
 
     # ═══════════════════════════════════════
-    # 标签页懒加载
+    # 仪表盘
     # ═══════════════════════════════════════
-
-    def _on_tab_changed(self, index: int):
-        if index < 0 or self._tab_loaded.get(index):
-            return
-        self._tab_loaded[index] = True
-        builders = [None, self._build_log, self._build_suggestions, self._build_knowledge_base, self._build_settings]
-        if index < len(builders) and builders[index]:
-            w = builders[index]()
-            self._replace_tab(index, w, self._tabs.tabText(index))
-
-    def _replace_tab(self, index: int, widget: QWidget, title: str):
-        self._tabs.removeTab(index)
-        self._tabs.insertTab(index, widget, title)
         self._tabs.setCurrentIndex(index)
 
     # ═══════════════════════════════════════
@@ -511,8 +374,7 @@ class MotherPanelQt(QMainWindow):
         cmd_row.addWidget(self.btn_send)
         layout.addLayout(cmd_row)
 
-        self._replace_tab(0, tab, "仪表盘")
-        self._tab_loaded[0] = True
+        self._dash.setLayout(layout)
 
         self._log("INFO", "OfficeNest 控制台已就绪")
         if self._dash_buffer:
@@ -531,6 +393,63 @@ class MotherPanelQt(QMainWindow):
     def _toggle_thinking(self, checked: bool):
         if self._dash_buffer:
             self._dash_buffer.set_thinking_visible(checked)
+
+    # ── 弹窗 ──
+
+    def _show_log(self):
+        dlg = QDialog(self); dlg.setWindowTitle("📋 日志"); dlg.resize(800, 500)
+        layout = QVBoxLayout(dlg)
+        tree = QTreeWidget(); tree.setColumnCount(3)
+        tree.setHeaderLabels(["时间", "类型", "详情"])
+        tree.header().setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
+        if self.logger:
+            try:
+                rows = self.logger._conn.execute(
+                    "SELECT timestamp, type, data FROM events ORDER BY timestamp DESC LIMIT 200"
+                ).fetchall()
+                for ts, etype, data in rows:
+                    ts_str = datetime.fromtimestamp(ts).strftime("%H:%M:%S") if ts else ""
+                    QTreeWidgetItem(tree, [ts_str, etype.split(".")[-1][:12], str(data)[:120]])
+            except Exception: pass
+        layout.addWidget(tree)
+        btn = QPushButton("关闭"); btn.clicked.connect(dlg.close); layout.addWidget(btn)
+        dlg.exec()
+
+    def _show_kb(self):
+        dlg = QDialog(self); dlg.setWindowTitle("📚 知识库"); dlg.resize(700, 450)
+        layout = QVBoxLayout(dlg)
+        tree = QTreeWidget(); tree.setColumnCount(4)
+        tree.setHeaderLabels(["来源", "描述", "分块数", "入库时间"])
+        tree.header().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
+        if self._app and self._app.kb:
+            try:
+                for r in self._app.kb.registry():
+                    ts = datetime.fromtimestamp(r["created_at"]).strftime("%Y-%m-%d %H:%M") if r.get("created_at") else ""
+                    QTreeWidgetItem(tree, [r.get("source",""), r.get("description",""), str(r.get("chunks",0)), ts])
+            except Exception: pass
+        layout.addWidget(tree)
+        btn = QPushButton("关闭"); btn.clicked.connect(dlg.close); layout.addWidget(btn)
+        dlg.exec()
+
+    def _show_settings(self):
+        dlg = QDialog(self); dlg.setWindowTitle("⚙ 设置"); dlg.resize(450, 400)
+        layout = QVBoxLayout(dlg)
+        layout.addWidget(QLabel("DeepSeek Key:"))
+        ds = QLineEdit(self.cfg.llm.api_key); ds.setEchoMode(QLineEdit.EchoMode.Password); layout.addWidget(ds)
+        layout.addWidget(QLabel("GLM Key:"))
+        gl = QLineEdit(getattr(self.cfg.llm, 'glm_api_key','')); gl.setEchoMode(QLineEdit.EchoMode.Password); layout.addWidget(gl)
+        layout.addWidget(QLabel("商汤 Key:"))
+        se = QLineEdit(getattr(self.cfg.llm, 'sense_api_key','')); se.setEchoMode(QLineEdit.EchoMode.Password); layout.addWidget(se)
+        layout.addWidget(QLabel("知乎 Key:"))
+        zh = QLineEdit(getattr(self.cfg.llm, 'zhihu_api_key','')); zh.setEchoMode(QLineEdit.EchoMode.Password); layout.addWidget(zh)
+        btn = QPushButton("💾 保存"); btn.clicked.connect(lambda: self._save_keys(dlg, ds.text(), gl.text(), se.text(), zh.text()))
+        layout.addWidget(btn)
+        dlg.exec()
+
+    def _save_keys(self, dlg, ds_key, glm_key, sense_key, zhihu_key):
+        self._up_yaml("llm", {"api_key": ds_key, "glm_api_key": glm_key, "sense_api_key": sense_key, "zhihu_api_key": zhihu_key})
+        dlg.close()
+        self._log("INFO", "✅ 设置已保存")
 
     def _log(self, level: str, msg: str):
         if self._dash_buffer:
