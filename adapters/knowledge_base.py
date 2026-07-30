@@ -18,6 +18,8 @@ class KnowledgeBase:
         self._conn.execute("""CREATE TABLE IF NOT EXISTS kb_docs (
             id TEXT PRIMARY KEY, source TEXT, description TEXT,
             chunks INTEGER, created_at REAL)""")
+        self._conn.execute("""CREATE TABLE IF NOT EXISTS kb_fulltext (
+            id TEXT PRIMARY KEY, source TEXT, text TEXT, created_at REAL)""")
         self._conn.commit()
 
         import chromadb
@@ -46,6 +48,8 @@ class KnowledgeBase:
 
         self._conn.execute("INSERT INTO kb_docs VALUES (?,?,?,?,?)",
                            (doc_id, source, description, len(chunks), now))
+        self._conn.execute("INSERT INTO kb_fulltext VALUES (?,?,?,?)",
+                           (doc_id, source, text, now))
         self._conn.commit()
         return f"✅ 已入库: {source}（{len(chunks)}块，{len(text)}字）"
 
@@ -83,8 +87,16 @@ class KnowledgeBase:
             pass
         # 删 SQLite
         self._conn.execute("DELETE FROM kb_docs WHERE id=?", (doc_id,))
+        self._conn.execute("DELETE FROM kb_fulltext WHERE id=?", (doc_id,))
         self._conn.commit()
         return True
+
+    def read(self, source: str) -> str:
+        """读取文档全文。"""
+        row = self._conn.execute(
+            "SELECT text FROM kb_fulltext WHERE source=?", (source,)
+        ).fetchone()
+        return row[0] if row else f"❌ 未找到: {source}"
 
     def close(self):
         self._conn.close()

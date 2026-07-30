@@ -15,7 +15,7 @@ from PySide6.QtWidgets import (
     QTextEdit, QPushButton, QLabel, QSpinBox, QCheckBox,
     QComboBox, QTreeWidget, QTreeWidgetItem, QHeaderView, QApplication,
     QMessageBox, QSplitter, QMenu, QListWidget, QListWidgetItem, QCompleter, QDialog,
-    QDialogButtonBox, QInputDialog,
+    QDialogButtonBox, QInputDialog, QLineEdit,
 )
 from PySide6.QtCore import Qt, QTimer, Signal, QThread, QStringListModel, QMimeData
 from PySide6.QtGui import QFont, QTextCursor, QColor, QTextCharFormat, QPixmap, QImage

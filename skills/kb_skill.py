@@ -26,6 +26,14 @@ class KnowledgeBaseSkill(BaseSkill):
                  "source": {"type": "string", "description": "来源文件名"},
                  "description": {"type": "string", "description": "内容描述，如'员工考勤制度'"},
              }, ["text", "source", "description"])},
+            {"name": "kb_delete", "fn": self.kb_delete,
+             "schema": self._s("从知识库中删除指定来源的文档", {
+                 "source": {"type": "string", "description": "来源文件名，与入库时一致"},
+             }, ["source"])},
+            {"name": "kb_read", "fn": self.kb_read,
+             "schema": self._s("阅读知识库文档的全文——先检索摘要，需要详细内容时调用此工具", {
+                 "source": {"type": "string", "description": "来源文件名"},
+             }, ["source"])},
             {"name": "kb_registry", "fn": self.kb_registry,
              "schema": self._s("查看知识库已索引的文件列表", {})},
         ]
@@ -43,6 +51,17 @@ class KnowledgeBaseSkill(BaseSkill):
         if len(text) < 20:
             return "❌ 文本太短（<20字），不适合入库"
         return self._kb.add(text, source, description)
+
+    def kb_delete(self, source: str) -> str:
+        if self._kb.remove(source):
+            return f"✅ 已从知识库删除: {source}"
+        return f"❌ 未找到: {source}"
+
+    def kb_read(self, source: str) -> str:
+        text = self._kb.read(source)
+        if text.startswith("❌"):
+            return text
+        return text[:3000] if len(text) > 3000 else text  # 截断到 3000 字
 
     def kb_registry(self) -> str:
         items = self._kb.registry()
