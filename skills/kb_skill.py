@@ -31,8 +31,10 @@ class KnowledgeBaseSkill(BaseSkill):
                  "source": {"type": "string", "description": "来源文件名，与入库时一致"},
              }, ["source"])},
             {"name": "kb_read", "fn": self.kb_read,
-             "schema": self._s("阅读知识库文档的全文——先检索摘要，需要详细内容时调用此工具", {
+             "schema": self._s("阅读知识库文档的指定范围——先检索拿到块号，需要上下文时读连续块", {
                  "source": {"type": "string", "description": "来源文件名"},
+                 "from_chunk": {"type": "integer", "description": "起始块号（从0开始），默认0"},
+                 "to_chunk": {"type": "integer", "description": "结束块号（含），-1=末尾，默认-1"},
              }, ["source"])},
             {"name": "kb_registry", "fn": self.kb_registry,
              "schema": self._s("查看知识库已索引的文件列表", {})},
@@ -44,7 +46,8 @@ class KnowledgeBaseSkill(BaseSkill):
             return f"（知识库中未找到关于'{query}'的内容）"
         lines = []
         for i, r in enumerate(results):
-            lines.append(f"{i+1}. [{r['source']}] {r['content'][:200]}")
+            lines.append(f"{i+1}. [{r['source']}] 块{r['chunk_idx']} (距离={r['score']:.2f})")
+            lines.append(f"   {r['content'][:200]}")
         return "\n".join(lines)
 
     def kb_add(self, text: str, source: str, description: str) -> str:
@@ -57,11 +60,8 @@ class KnowledgeBaseSkill(BaseSkill):
             return f"✅ 已从知识库删除: {source}"
         return f"❌ 未找到: {source}"
 
-    def kb_read(self, source: str) -> str:
-        text = self._kb.read(source)
-        if text.startswith("❌"):
-            return text
-        return text[:3000] if len(text) > 3000 else text  # 截断到 3000 字
+    def kb_read(self, source: str, from_chunk: int = 0, to_chunk: int = -1) -> str:
+        return self._kb.read_chunks(source, from_chunk, to_chunk)
 
     def kb_registry(self) -> str:
         items = self._kb.registry()
