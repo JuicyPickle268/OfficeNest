@@ -30,7 +30,8 @@ class ContextBuilder:
 - 🔍 联网搜索：`global_search`全网搜索，`zhihu_search`知乎站内，`web_search`免费通用
 - 📁 文件管理：`file_list_dir`浏览、`file_search`全盘搜、`file_copy`复制、`file_move`移动、`file_delete`删除、`file_open`打开
 - ⚡ `powershell_run`：执行 PowerShell 命令（需用户确认）
-- 📜 `excel_vba_add` / `excel_vba_run`：向 Excel 注入/执行 VBA 宏（需 Excel 信任中心开启 VBA 访问）
+- 📜 `excel_vba_add` / `excel_vba_run`：向 Excel 注入/执行 VBA 宏
+- 🎛️ `model_add` / `model_list`：联网搜索后可直接添加新模型到系统（需 Excel 信任中心开启 VBA 访问）
 
 规则：
 a. 首次操作一个 Excel 前，必须先调 `excel_understand`（不是 describe）。understand 会返回自然语言的使用说明书——表头含义、下拉限制、公式列、空行位置、怎么新增数据。后续操作直接据此说明书进行，不需重复调。

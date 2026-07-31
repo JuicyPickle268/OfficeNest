@@ -25,6 +25,30 @@ class OfficeBridge(IOfficeBridge):
         self._auto_backup = auto_backup
 
     @classmethod
+    def _com_dispatch(cls, ms_name: str, wps_name: str):
+        """优先 MS Office，失败降级 WPS。"""
+        import win32com.client
+        try:
+            return win32com.client.Dispatch(ms_name)
+        except Exception:
+            try:
+                return win32com.client.Dispatch(wps_name)
+            except Exception:
+                raise Exception(f"COM 调度失败: {ms_name} / {wps_name}")
+
+    @classmethod
+    def _com_get_active(cls, ms_name: str, wps_name: str):
+        """优先 MS Office，失败降级 WPS。"""
+        import win32com.client
+        try:
+            return win32com.client.GetActiveObject(ms_name)
+        except Exception:
+            try:
+                return win32com.client.GetActiveObject(wps_name)
+            except Exception:
+                raise Exception(f"COM 未找到活动对象: {ms_name} / {wps_name}")
+
+    @classmethod
     def _ensure_com(cls):
         """确保当前线程已初始化 COM。"""
         if not getattr(cls._com_initialized, "done", False):
@@ -61,7 +85,7 @@ class OfficeBridge(IOfficeBridge):
         if locked_by_excel and path.exists():
             try:
                 import win32com.client
-                app = win32com.client.Dispatch("Excel.Application")
+                app = self._com_dispatch("Excel.Application", "ET.Application")
                 app.Visible = visible
                 app.DisplayAlerts = False
                 wb = app.Workbooks.Open(str(path))
@@ -262,7 +286,7 @@ class OfficeBridge(IOfficeBridge):
 
             # 第1步：尝试连接到已在运行的 Word（热模式）
             try:
-                word = win32com.client.GetActiveObject("Word.Application")
+                word = self._com_get_active("Word.Application", "WPS.Application")
                 for d in word.Documents:
                     try:
                         if Path(d.FullName).resolve() == path:
@@ -275,7 +299,7 @@ class OfficeBridge(IOfficeBridge):
                 pass
 
             # 第2步：启动新的 Word 进程
-            word = win32com.client.Dispatch("Word.Application")
+            word = self._com_dispatch("Word.Application", "WPS.Application")
             word.Visible = False
             word.ScreenUpdating = False
             print(f"  🔥 [win32com] 后台启动 Word 进程")
@@ -370,7 +394,7 @@ class OfficeBridge(IOfficeBridge):
         if not ws:
             try:
                 import win32com.client
-                excel = win32com.client.GetActiveObject("Excel.Application")
+                excel = self._com_get_active("Excel.Application", "ET.Application")
                 ws = excel.ActiveWorkbook.ActiveSheet
             except Exception:
                 return False
@@ -430,7 +454,7 @@ class OfficeBridge(IOfficeBridge):
             # 尝试获取活动 Excel
             try:
                 import win32com.client
-                excel = win32com.client.GetActiveObject("Excel.Application")
+                excel = self._com_get_active("Excel.Application", "ET.Application")
                 wb = excel.ActiveWorkbook
             except Exception:
                 return False
@@ -531,7 +555,7 @@ class OfficeBridge(IOfficeBridge):
             pythoncom.CoInitialize()
             import win32com.client
             try:
-                excel = win32com.client.GetActiveObject("Excel.Application")
+                excel = self._com_get_active("Excel.Application", "ET.Application")
             except Exception:
                 return None, None
 
