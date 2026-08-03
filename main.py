@@ -22,10 +22,8 @@ from config.schema import load_config
 from adapters.office_bridge import OfficeBridge
 from adapters.clipboard_bridge import ClipboardBridge
 from adapters.file_bridge import FileBridge
-from adapters.excel_sync import ExcelSync
 from adapters.file_registry import FileRegistry
 from adapters.llm.deepseek_client import DeepSeekClient
-from adapters.feishu.gateway import FeishuGateway
 from core.mother.engine import MotherEngine
 from core.mother.context_builder import ContextBuilder
 from core.mother.tool_registry import ToolRegistry
@@ -66,19 +64,8 @@ class MotherApp:
         self.office = OfficeBridge(auto_backup=self.cfg.office.auto_backup)
         self.clipboard = ClipboardBridge()
         self.files = FileBridge()
-        self.excel_sync = ExcelSync(self.cfg.storage.db_path)
         self.file_registry = FileRegistry(self.cfg.storage.db_path)
         self.memory = SQLiteMemoryStore(self.cfg.storage.db_path)
-
-        # 飞书
-        self.feishu: FeishuGateway | None = None
-        if self.cfg.feishu.app_id and self.cfg.feishu.enable_websocket:
-            self.feishu = FeishuGateway(
-                self.cfg.feishu.app_id,
-                self.cfg.feishu.app_secret,
-                self.event_bus,
-            )
-            self.feishu.on_message(self._on_feishu_message_sync)
 
         # LLM
         self.llm = DeepSeekClient(
@@ -156,54 +143,8 @@ class MotherApp:
         self.event_bus.subscribe(EventType.TOOL_CALL_ERROR,
             lambda e: print(f"❌ {e.data.get('error', '?')}"))
 
-    # ── 飞书消息处理 ──
-
-    def _on_feishu_message_sync(self, msg):
-        """WS 回调入口（在飞书 SDK 线程中运行）。"""
-        if not msg.text:
-            return
-        if msg.chat_type == "group" and not msg.mentioned:
-            return
-
-        # ws_client 已发布 FEISHU_MESSAGE_RECEIVED，这里只负责处理 + 回复
-        import threading, asyncio, traceback
-
-        def _process():
-            try:
-                loop = asyncio.new_event_loop()
-                asyncio.set_event_loop(loop)
-                result = loop.run_until_complete(self.process(msg.text))
-                reply_text = result.get("response", "")[:4000]
-                if self.feishu:
-                    loop.run_until_complete(self.feishu.send_message(msg.chat_id, reply_text))
-                # 同步回复到事件总线
-                self.event_bus.publish(Event(
-                    type=EventType.FEISHU_MESSAGE_RECEIVED,
-                    source="feishu.ws",
-                    data={"text": f"📤 已回复: {reply_text[:100]}", "chat_type": msg.chat_type},
-                ))
-            except Exception:
-                traceback.print_exc()
-            finally:
-                loop.close()
-
-        t = threading.Thread(target=_process, daemon=True)
-        t.start()
-        # 不 join，让 SDK 线程继续接收新消息
-
-    def start_feishu(self):
-        """启动飞书 WebSocket（同步，在后台线程中运行）。"""
-        if self.feishu:
-            self.feishu.start()
-
-    def stop_feishu(self):
-        """停止飞书 WebSocket。"""
-        if self.feishu:
-            self.feishu.stop()
-
     def shutdown(self):
         """清理所有资源。"""
-        self.stop_feishu()
         from adapters.search_agent import shutdown_agent
         shutdown_agent()
         self.office._sessions.clear()
@@ -226,8 +167,6 @@ class MotherApp:
 
         memory = self.memory.get_context()
         file_list = self._get_file_list()
-        excel_summary = self.excel_sync.get_summary()
-
         # 加载该会话历史
         self.memory.ensure_session(session_id)
         history = self.memory.load_history(session_id, 30)
@@ -236,7 +175,6 @@ class MotherApp:
             user_message=user_input,
             memory_context=memory,
             file_list=file_list,
-            excel_sync_summary=excel_summary,
             chat_history=history,
             on_token=on_token,
             pinned_file=pinned_file,
@@ -262,32 +200,11 @@ class MotherApp:
         else:
             self.memory.save_message("assistant", reply[:2000], session_id)
 
-        # 同步 Excel
-        self._sync_excel_files()
-
         return result
 
     def _get_file_list(self) -> str:
         """从注册表获取文件列表供 LLM 参考。"""
         return self.file_registry.get_summary()
-
-    def _sync_excel_files(self) -> None:
-        """同步所有 workbooks 下的 Excel 到 SQLite。"""
-        import openpyxl
-        for f in self.files.list_dir("./workbooks", "*.xlsx"):
-            try:
-                wb = openpyxl.load_workbook(str(f), read_only=True, data_only=True)
-                sheets = {}
-                for name in wb.sheetnames:
-                    ws = wb[name]
-                    rows = [[cell for cell in row] for row in ws.iter_rows(values_only=True)]
-                    if rows:
-                        sheets[name] = rows
-                if sheets:
-                    self.excel_sync.sync_workbook(f.name, sheets)
-                wb.close()
-            except Exception:
-                pass
 
     def _scan_and_register_files(self):
         """启动时自动扫描并注册已有文件。"""
@@ -343,10 +260,6 @@ async def interactive_mode(app: MotherApp):
 
         if user_input.lower() == "/files":
             print(app._get_file_list())
-            continue
-
-        if user_input.lower() == "/sheets":
-            print(app.excel_sync.get_summary())
             continue
 
         print(f"🤖 ", end="", flush=True)

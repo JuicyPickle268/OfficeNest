@@ -513,9 +513,6 @@ class MotherPanelQt(QMainWindow):
         # 加载会话列表和历史
         self._refresh_sessions()
         self._load_history()
-        if self._app.feishu:
-            self._app.feishu.start()
-            self._update_status("飞书", "● 连接中...")
 
     def _stop_engine(self):
         """中断当前输出，不关闭引擎。"""
@@ -1319,17 +1316,6 @@ class MotherPanelQt(QMainWindow):
         self._s_optimize.setChecked(getattr(self.cfg.llm, 'optimize_enabled', True))
         layout.addWidget(self._s_optimize)
 
-        # ── 飞书 ──
-        layout.addWidget(QLabel("飞书"))
-        self._feishu_app_id = QLineEdit(self.cfg.feishu.app_id if self.cfg else "")
-        layout.addWidget(self._feishu_app_id)
-        self._feishu_app_secret = QLineEdit(self.cfg.feishu.app_secret if self.cfg else "")
-        self._feishu_app_secret.setEchoMode(QLineEdit.EchoMode.Password)
-        layout.addWidget(self._feishu_app_secret)
-        self._feishu_ws_cb = QCheckBox("启用 WebSocket")
-        self._feishu_ws_cb.setChecked(self.cfg.feishu.enable_websocket if self.cfg else False)
-        layout.addWidget(self._feishu_ws_cb)
-
         # ── 保存 ──
         btn = QPushButton("💾 保存设置")
         btn.clicked.connect(self._save_settings)
@@ -1362,11 +1348,6 @@ class MotherPanelQt(QMainWindow):
                 yaml.dump(data, open(str(mp), "w", encoding="utf-8"), allow_unicode=True, default_flow_style=False, sort_keys=False)
         except Exception:
             pass
-        self._up_yaml("feishu", {
-            "app_id": self._feishu_app_id.text(),
-            "app_secret": self._feishu_app_secret.text(),
-            "enable_websocket": self._feishu_ws_cb.isChecked(),
-        })
         self._s_status.setText("✅ 已保存，重启面板生效")
 
     def _up_yaml(self, section, values):
@@ -1389,8 +1370,6 @@ class MotherPanelQt(QMainWindow):
             self._exam_buffer.stop()
         if self._app:
             self._app.engine.cancel()
-            if self._app.feishu:
-                self._app.feishu.stop()
             self._app.shutdown()
             self._app = None
         if self.logger:
