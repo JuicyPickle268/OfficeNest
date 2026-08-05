@@ -1279,8 +1279,9 @@ class MotherPanelQt(QMainWindow):
             self._ds_model.setCurrentText(self.cfg.llm.model) if self.cfg else None
         r.addWidget(self._ds_model)
         r.addWidget(QLabel("轮次:"))
-        self._ds_rounds = QSpinBox(); self._ds_rounds.setRange(1,30)
-        self._ds_rounds.setValue(self.cfg.llm.max_rounds if self.cfg else 20)
+        self._ds_rounds = QSpinBox(); self._ds_rounds.setRange(0, 200)
+        self._ds_rounds.setSpecialValueText("无限")  # 0=无限，靠中断按钮兜底
+        self._ds_rounds.setValue(self.cfg.llm.max_rounds if self.cfg else 0)
         r.addWidget(self._ds_rounds)
         r.addWidget(QLabel("Temp:"))
         self._ds_temp = QComboBox(); self._ds_temp.addItems(["0.1","0.3","0.5","0.7","1.0","1.5","2.0"])

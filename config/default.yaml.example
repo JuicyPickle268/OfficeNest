@@ -11,7 +11,7 @@ llm:
   api_key: "sk-你的密钥"
   model: deepseek-v4-pro
   base_url: https://api.deepseek.com/v1
-  max_rounds: 20
+  max_rounds: 0
   context_rounds: 0
   temperature: 0.3
   glm_api_key: ""

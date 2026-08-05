@@ -28,7 +28,7 @@ class LLMConfig:
     api_key: str = ""
     model: str = "deepseek-chat"
     base_url: str = "https://api.deepseek.com/v1"
-    max_rounds: int = 20
+    max_rounds: int = 20  # 工具调用最大轮次，0=无限（靠用户中断兜底）
     context_rounds: int = 0  # 上下文轮数，0=无限
     temperature: float = 0.3
     glm_api_key: str = ""  # 智谱 GLM 视觉模型

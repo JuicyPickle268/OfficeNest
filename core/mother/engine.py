@@ -25,6 +25,14 @@ from core.events.event import Event
 from core.events.types import EventType
 
 
+def _infinite_rounds():
+    """无限轮次生成器（max_rounds=0 时使用，靠 cancel() 中断）。"""
+    n = 1
+    while True:
+        yield n
+        n += 1
+
+
 class MotherEngine:
     """
     Tool Call 循环引擎。
@@ -35,7 +43,7 @@ class MotherEngine:
         3. 如果 LLM 返回纯文本 → 结束，返回最终回复
 
     内置保护机制：
-        - max_rounds: 最多执行 N 轮，防止死循环（默认 8 轮）
+        - max_rounds: 最多执行 N 轮，防止死循环（默认 8 轮；0=无限，靠 cancel() 中断）
         - 危险工具确认: excel_delete_rows / file_delete / powershell_run 需用户确认
         - 连环错误检测: 同一工具连续失败 3 次 → 建议 LLM 放弃
         - 虚假成功拦截: 声称"已写入"但未调 excel_write 时自动警告
@@ -162,7 +170,7 @@ class MotherEngine:
         _last_error_msg = ""
         MAX_CONSECUTIVE_ERRORS = 3
 
-        for round_num in range(1, self._max_rounds + 1):
+        for round_num in range(1, self._max_rounds + 1) if self._max_rounds > 0 else _infinite_rounds():
             # ── 中断检查 ──
             if self._cancel_flag.is_set():
                 elapsed = datetime.now(timezone.utc).timestamp() - start_time
