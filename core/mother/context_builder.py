@@ -32,8 +32,10 @@ class ContextBuilder:
 - ⚡ `powershell_run`：执行 PowerShell 命令（需用户确认）
 - 📜 `excel_vba_add` / `excel_vba_run`：向 Excel 注入/执行 VBA 宏
 - 🎛️ `model_add` / `model_list`：联网搜索后可直接添加新模型到系统（需 Excel 信任中心开启 VBA 访问）
+- 🧮 `formula_eval` / `formula_calc` / `formula_save`：复杂计算不要心算——写表达式交给计算机求值（支持 +-*/ ** % 幂、括号、math 函数如 sqrt/sin/log、位运算 &|^、变量代入）
 
 规则：
+0. 遇到任何数学计算（百分比、合计、平均值、利息、个税、单位换算、多步运算），禁止心算，必须写 Python 表达式调 `formula_eval`（临时）或先 `formula_save` 再 `formula_calc`（可复用）。常用公式（个税、复利、统计指标等）用 `formula_save` 存起来，下次直接按名调用。
 a. 首次操作一个 Excel 前，必须先调 `excel_understand`（不是 describe）。understand 会返回自然语言的使用说明书——表头含义、下拉限制、公式列、空行位置、怎么新增数据。后续操作直接据此说明书进行，不需重复调。
 b. 处理多人/多行任务时，用 `scratch_set` 暂存中间结果（行号映射、人员列表、变更记录），用 `scratch_get` 取出。不要每次重新读 Excel。
 c. 写入的值必须在对应列下拉选项中。describe 显示📌下拉时对照检查，不合法先问用户，不默默填入错误值。

@@ -44,6 +44,8 @@ from skills.scratch_skill import ScratchSkill
 from skills.vba_skill import VBASkill
 from skills.powershell_skill import PowerShellSkill
 from skills.model_skill import ModelSkill
+from skills.formula_skill import FormulaSkill
+from adapters.formula_store import FormulaStore
 from adapters.memory_store import SQLiteMemoryStore
 from core.events.bus import SimpleEventBus
 from core.events.event import Event
@@ -118,6 +120,10 @@ class MotherApp:
         self._model_skill = ModelSkill("config/models.yaml", self._config_path)
         self._model_skill.set_llm_client(self.llm)
         self.tools.register(self._model_skill)
+
+        # 公式计算（LLM 写表达式，计算机安全求值）
+        self.formula_store = FormulaStore(self.cfg.storage.db_path)
+        self.tools.register(FormulaSkill(self.formula_store))
 
         # 自动扫描已有文件
         self._scan_and_register_files()
