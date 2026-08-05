@@ -138,7 +138,14 @@ Rules:
         if chat_history:
             if self._max_context > 0:
                 chat_history = chat_history[-self._max_context:]
-            messages.extend(chat_history)
+            # 单条消息长度上限：完整思考可能上万字符，注入时精炼
+            # （DB 中保存完整版，这里只放推理链的关键部分）
+            MAX_MSG_CHARS = 6000
+            for m in chat_history:
+                content = m.get("content", "")
+                if content and len(content) > MAX_MSG_CHARS:
+                    m = {**m, "content": content[:MAX_MSG_CHARS] + "\n…（已截断）"}
+                messages.append(m)
 
         messages.append({"role": "user", "content": user_message})
         return messages

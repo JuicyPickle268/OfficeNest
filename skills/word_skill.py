@@ -96,6 +96,31 @@ class WordSkill(BaseSkill):
                  "text": {"type": "string", "description": "段落文字内容"},
                  "style": {"type": "string", "description": "样式: normal/heading1/heading2，默认normal"},
              }, ["filepath", "text"])},
+            {"name": "word_create_document", "fn": self.word_create_document,
+             "schema": self._schema("生成专业格式的 Word 文档（结构化）。这是 PDF/文本转 Word 的首选工具——你负责理解内容并组装 JSON 结构，程序负责全部格式：标题层级/首行缩进/中文字体/目录/表格。JSON 格式: {\"title\":\"文档标题\",\"meta\":[[\"标签\",\"值\"]],\"toc\":true,\"sections\":[{\"level\":1,\"title\":\"章节标题\",\"paragraphs\":[\"正文\"],\"bullets\":[\"列表项\"],\"numbered\":[\"编号项\"],\"table\":{\"headers\":[\"列1\"],\"rows\":[[\"值\"]]},\"sections\":[子章节]}]}", {
+                 "output_path": {"type": "string", "description": "输出文件路径"},
+                 "doc_json": {"type": "string", "description": "文档结构 JSON（见描述中的格式）"},
+             }, ["output_path", "doc_json"])},
+            {"name": "word_set_format", "fn": self.word_set_format,
+             "schema": self._schema("批量调整 Word 现有文档的格式：字体/字号/加粗/颜色/对齐/行距/缩进。match_text 定位包含该文本的段落（空=全部段落），font 为 None 时不修改该属性", {
+                 "filepath": {"type": "string", "description": "Word 文件路径"},
+                 "match_text": {"type": "string", "description": "匹配段落包含的文本，空=全部段落"},
+                 "font": {"type": "string", "description": "中文字体名，如 宋体/黑体/微软雅黑（None=不改）"},
+                 "size": {"type": "number", "description": "字号(pt)，如 12（None=不改）"},
+                 "bold": {"type": "boolean", "description": "是否加粗（None=不改）"},
+                 "color": {"type": "string", "description": "字体颜色十六进制，如 FF0000（None=不改）"},
+                 "align": {"type": "string", "description": "对齐: left/center/right/justify（None=不改）"},
+                 "line_spacing": {"type": "number", "description": "行距倍数，如 1.5（None=不改）"},
+                 "indent": {"type": "number", "description": "首行缩进(字符数)，如 2（None=不改）"},
+             }, ["filepath"])},
+            {"name": "word_insert_toc", "fn": self.word_insert_toc,
+             "schema": self._schema("在文档中插入目录字段（基于现有 Heading 样式，Word 中右键→更新域生成页码）", {
+                 "filepath": {"type": "string", "description": "Word 文件路径"},
+             }, ["filepath"])},
+            {"name": "word_list_styles", "fn": self.word_list_styles,
+             "schema": self._schema("列出文档中已有的段落样式（Heading/Normal/自定义），供格式调整参考", {
+                 "filepath": {"type": "string", "description": "Word 文件路径"},
+             }, ["filepath"])},
         ]
 
     async def word_generate(self, template_path: str, output_path: str,
@@ -514,6 +539,124 @@ class WordSkill(BaseSkill):
             return f"❌ Word生成失败: {e}"
 
 
+
+    # ── 专业文档工具 ──
+
+    def word_create_document(self, output_path: str, doc_json: str) -> str:
+        """结构化 JSON → 专业 docx（标题/目录/缩进/中文字体全部由程序负责）。"""
+        from adapters.word_doc_renderer import render_document_json_str
+        return render_document_json_str(doc_json, output_path)
+
+    def word_set_format(self, filepath: str, match_text: str = "",
+                        font: str = "", size=None, bold=None, color: str = "",
+                        align: str = "", line_spacing=None, indent=None) -> str:
+        """批量调整现有文档的格式。match_text 匹配段落，空则全部。"""
+        try:
+            path = self._ensure_docx(filepath)
+        except (FileNotFoundError, RuntimeError) as e:
+            return str(e)
+        try:
+            from docx import Document
+            from docx.shared import Pt, RGBColor
+            from docx.enum.text import WD_ALIGN_PARAGRAPH, WD_LINE_SPACING
+            from docx.oxml.ns import qn
+            from docx.oxml import OxmlElement
+
+            doc = Document(str(path))
+            count = 0
+            for p in doc.paragraphs:
+                if match_text and match_text not in p.text:
+                    continue
+                pf = p.paragraph_format
+                # 行距
+                if line_spacing is not None:
+                    pf.line_spacing = float(line_spacing)
+                # 对齐
+                if align:
+                    amap = {"left": WD_ALIGN_PARAGRAPH.LEFT, "center": WD_ALIGN_PARAGRAPH.CENTER,
+                            "right": WD_ALIGN_PARAGRAPH.RIGHT, "justify": WD_ALIGN_PARAGRAPH.JUSTIFY}
+                    if align in amap:
+                        pf.alignment = amap[align]
+                # 缩进（字符数）
+                if indent is not None:
+                    pf.first_line_indent = Pt(12 * float(indent))
+                # 字体（应用到所有 run）
+                for run in p.runs:
+                    if font:
+                        run.font.name = font
+                        rPr = run._element.get_or_add_rPr()
+                        rFonts = rPr.find(qn("w:rFonts"))
+                        if rFonts is None:
+                            rFonts = OxmlElement("w:rFonts")
+                            rPr.insert(0, rFonts)
+                        rFonts.set(qn("w:eastAsia"), font)
+                    if size is not None:
+                        run.font.size = Pt(float(size))
+                    if bold is not None:
+                        run.font.bold = bool(bold)
+                    if color:
+                        run.font.color.rgb = RGBColor.from_string(color.lstrip("#"))
+                count += 1
+            doc.save(str(path))
+            desc = []
+            if font: desc.append(f"字体={font}")
+            if size is not None: desc.append(f"字号={size}pt")
+            if bold is not None: desc.append(f"加粗={bold}")
+            if color: desc.append(f"颜色=#{color}")
+            if align: desc.append(f"对齐={align}")
+            if line_spacing is not None: desc.append(f"行距={line_spacing}")
+            if indent is not None: desc.append(f"首行缩进={indent}字符")
+            return f"✅ 已调整 {count} 个段落: {', '.join(desc) if desc else '无改动'}"
+        except Exception as e:
+            return f"❌ 格式调整失败: {e}"
+
+    def word_insert_toc(self, filepath: str) -> str:
+        """在文档开头插入目录字段（需在 Word 中更新域）。"""
+        try:
+            path = self._ensure_docx(filepath)
+        except (FileNotFoundError, RuntimeError) as e:
+            return str(e)
+        try:
+            from docx import Document
+            from docx.oxml.ns import qn
+            from docx.oxml import OxmlElement
+
+            doc = Document(str(path))
+            # 在第一个段落前插入目录标题+字段
+            p = doc.paragraphs[0].insert_paragraph_before("目录")
+            p.style = doc.styles["Heading 1"]
+            p2 = doc.paragraphs[0].insert_paragraph_before("")
+            run = p2.add_run()
+            fld1 = OxmlElement("w:fldChar"); fld1.set(qn("w:fldCharType"), "begin")
+            instr = OxmlElement("w:instrText"); instr.set(qn("xml:space"), "preserve")
+            instr.text = r'TOC \o "1-3" \h \z \u'
+            fld2 = OxmlElement("w:fldChar"); fld2.set(qn("w:fldCharType"), "separate")
+            t = OxmlElement("w:t"); t.text = "（目录：Word 中右键此处→更新域）"
+            fld3 = OxmlElement("w:fldChar"); fld3.set(qn("w:fldCharType"), "end")
+            for el in (fld1, instr, fld2, t, fld3):
+                run._r.append(el)
+            doc.save(str(path))
+            return f"✅ 目录字段已插入: {path.name}（打开后在目录处右键→更新域生成页码）"
+        except Exception as e:
+            return f"❌ 插入目录失败: {e}"
+
+    def word_list_styles(self, filepath: str) -> str:
+        """列出文档已有的段落样式分布。"""
+        try:
+            path = self._ensure_docx(filepath)
+        except (FileNotFoundError, RuntimeError) as e:
+            return str(e)
+        try:
+            from docx import Document
+            from collections import Counter
+            doc = Document(str(path))
+            styles = Counter(p.style.name if p.style else "?" for p in doc.paragraphs)
+            if not styles:
+                return "（文档无段落）"
+            return "段落样式分布:\n" + "\n".join(
+                f"  {s}: {c} 段" for s, c in styles.most_common())
+        except Exception as e:
+            return f"❌ 读取样式失败: {e}"
 
     @staticmethod
     def _ensure_docx(filepath: str) -> Path:

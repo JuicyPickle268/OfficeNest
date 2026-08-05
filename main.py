@@ -208,12 +208,15 @@ class MotherApp:
         reply = result.get("response", "（无响应）")
         thinking = result.get("thinking", "")
 
-        # 自动保存（思考合入 assistant 消息，不单独存——API 不支持 thinking role）
+        # 自动保存：完整保留思考过程，避免长任务丢失上下文
+        # （截断会导致 LLM 下次对话丢失"之前做过什么"的推理链）
         self.memory.save_message("user", user_input, session_id)
         if thinking:
-            self.memory.save_message("assistant", f"[思考]\n{thinking[:2000]}\n[/思考]\n\n{reply[:1000]}", session_id)
+            # 思考可能很长，完整保存（对话历史本身会按 max_messages 截断）
+            self.memory.save_message(
+                "assistant", f"[思考]\n{thinking}\n[/思考]\n\n{reply}", session_id)
         else:
-            self.memory.save_message("assistant", reply[:2000], session_id)
+            self.memory.save_message("assistant", reply, session_id)
 
         return result
 
