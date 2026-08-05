@@ -33,17 +33,3 @@ class ClipboardSkill(BaseSkill):
     def clipboard_write(self, text: str) -> str:
         self._clipboard.write_text(text)
         return f"✅ 已写入剪切板（{len(text)} 字符）"
-
-    @staticmethod
-    def _schema(desc: str, properties: dict, required: list[str] | None = None) -> dict:
-        return {
-            "type": "function",
-            "function": {
-                "description": desc,
-                "parameters": {
-                    "type": "object",
-                    "properties": properties,
-                    "required": required or [],
-                }
-            }
-        }

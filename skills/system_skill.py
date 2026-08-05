@@ -341,10 +341,3 @@ class SystemSkill(BaseSkill):
         if self._registry.unregister(name):
             return f"✅ 已从注册表移除: {name}"
         return f"❌ 注册表中未找到: {name}"
-
-    @staticmethod
-    def _schema(desc: str, properties: dict, required: list[str] | None = None) -> dict:
-        return {"type": "function", "function": {
-            "description": desc,
-            "parameters": {"type": "object", "properties": properties, "required": required or []}
-        }}

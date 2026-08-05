@@ -51,8 +51,3 @@ class ScratchSkill(BaseSkill):
         if not items:
             return "（暂存为空）"
         return "\n".join(f"  📝 {r['key']}: {r['preview']}" for r in items)
-
-    @staticmethod
-    def _s(desc, props, req=None):
-        return {"type": "function", "function": {
-            "description": desc, "parameters": {"type": "object", "properties": props, "required": req or []}}}

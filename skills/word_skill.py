@@ -513,19 +513,7 @@ class WordSkill(BaseSkill):
         except Exception as e:
             return f"❌ Word生成失败: {e}"
 
-    @staticmethod
-    def _schema(desc: str, properties: dict, required: list[str] | None = None) -> dict:
-        return {
-            "type": "function",
-            "function": {
-                "description": desc,
-                "parameters": {
-                    "type": "object",
-                    "properties": properties,
-                    "required": required or [],
-                }
-            }
-        }
+
 
     @staticmethod
     def _ensure_docx(filepath: str) -> Path:

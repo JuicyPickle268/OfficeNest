@@ -39,9 +39,9 @@ providers:
       - cheap
       - chinese
     - name: glm-4.6v
-        tags:
-        - vision
-        - chinese
+      tags:
+      - vision
+      - chinese
   zhipu:
     models:
     - name: glm-5.2

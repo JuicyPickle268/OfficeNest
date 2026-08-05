@@ -397,13 +397,6 @@ class VisionSkill(BaseSkill):
         except Exception as e:
             return f"❌ 合并失败: {e}"
 
-    @staticmethod
-    def _s(desc, props, req):
-        return {"type": "function", "function": {
-            "description": desc,
-            "parameters": {"type": "object", "properties": props, "required": req or []}
-        }}
-
 
 def _screenshot_fallback(filepath: str, app: str) -> str:
     """截图降级：pywin32 不可用。"""

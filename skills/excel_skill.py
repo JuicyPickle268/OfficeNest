@@ -737,17 +737,3 @@ class ExcelSkill(BaseSkill):
             return f"❌ 无法读取: {e}"
 
     # ── helpers ──
-
-    @staticmethod
-    def _schema(desc: str, properties: dict, required: list[str] | None = None) -> dict:
-        return {
-            "type": "function",
-            "function": {
-                "description": desc,
-                "parameters": {
-                    "type": "object",
-                    "properties": properties,
-                    "required": required or [],
-                }
-            }
-        }

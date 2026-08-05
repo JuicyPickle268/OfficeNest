@@ -18,15 +18,30 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
 
+# ── 配置 ──
 from config.schema import load_config
+
+# ── 适配器（外部依赖实现）──
 from adapters.office_bridge import OfficeBridge
 from adapters.clipboard_bridge import ClipboardBridge
 from adapters.file_bridge import FileBridge
 from adapters.file_registry import FileRegistry
+from adapters.knowledge_base import KnowledgeBase
+from adapters.vision_queue import VisionQueue
+from adapters.opt_store import OptStore
+from adapters.scratch_store import ScratchStore
+from adapters.memory_store import SQLiteMemoryStore
 from adapters.llm.deepseek_client import DeepSeekClient
+
+# ── 核心引擎 ──
 from core.mother.engine import MotherEngine
 from core.mother.context_builder import ContextBuilder
 from core.mother.tool_registry import ToolRegistry
+from core.events.bus import SimpleEventBus
+from core.events.event import Event
+from core.events.types import EventType
+
+# ── Skills（LLM 可调用工具）──
 from skills.excel_skill import ExcelSkill
 from skills.word_skill import WordSkill
 from skills.clipboard_skill import ClipboardSkill
@@ -35,21 +50,15 @@ from skills.chart_skill import ChartSkill
 from skills.vision_skill import VisionSkill
 from skills.workflow_skill import WorkflowSkill, WorkflowStore
 from skills.kb_skill import KnowledgeBaseSkill
-from adapters.knowledge_base import KnowledgeBase
-from adapters.vision_queue import VisionQueue
-from adapters.opt_store import OptStore
 from skills.opt_skill import OptimizationSkill
-from adapters.scratch_store import ScratchStore
 from skills.scratch_skill import ScratchSkill
 from skills.vba_skill import VBASkill
 from skills.powershell_skill import PowerShellSkill
 from skills.model_skill import ModelSkill
 from skills.formula_skill import FormulaSkill
+
+# ── 存储适配器（Skill 的数据库）──
 from adapters.formula_store import FormulaStore
-from adapters.memory_store import SQLiteMemoryStore
-from core.events.bus import SimpleEventBus
-from core.events.event import Event
-from core.events.types import EventType
 
 
 class MotherApp:

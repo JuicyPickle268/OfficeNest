@@ -99,8 +99,3 @@ class VBASkill(BaseSkill):
             return f"✅ VBA 宏「{macro_name}」执行完成" + (f"，返回: {result}" if result else "")
         except Exception as e:
             return f"❌ VBA 执行失败: {e}"
-
-    @staticmethod
-    def _s(desc, props, req=None):
-        return {"type": "function", "function": {
-            "description": desc, "parameters": {"type": "object", "properties": props, "required": req or []}}}

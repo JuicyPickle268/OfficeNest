@@ -153,9 +153,3 @@ class FormulaSkill(BaseSkill):
 
     def formula_eval(self, expression: str, variables: dict | None = None) -> str:
         return self._engine.evaluate(expression, variables or {})
-
-    @staticmethod
-    def _s(desc, props, req=None):
-        return {"type": "function", "function": {
-            "description": desc,
-            "parameters": {"type": "object", "properties": props, "required": req or []}}}

@@ -43,8 +43,3 @@ class PowerShellSkill(BaseSkill):
             return "❌ PowerShell 未找到"
         except Exception as e:
             return f"❌ 执行失败: {e}"
-
-    @staticmethod
-    def _s(desc, props, req=None):
-        return {"type": "function", "function": {
-            "description": desc, "parameters": {"type": "object", "properties": props, "required": req or []}}}

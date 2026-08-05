@@ -108,8 +108,3 @@ class ModelSkill(BaseSkill):
             return f"✅ {provider} Key 已保存到配置（键: llm.{config_key}）"
         except Exception as e:
             return f"❌ 保存失败: {e}"
-
-    @staticmethod
-    def _s(desc, props, req=None):
-        return {"type": "function", "function": {
-            "description": desc, "parameters": {"type": "object", "properties": props, "required": req or []}}}

@@ -84,8 +84,3 @@ class WorkflowSkill(BaseSkill):
         self._store.increment(wf["id"])
         steps_desc = " → ".join(s["tool"] for s in wf["steps"])
         return f"📋 工作流「{wf['name']}」\n步骤: {steps_desc}\n提示: {wf['prompt_hint']}"
-
-    @staticmethod
-    def _s(desc, props, req=None):
-        return {"type": "function", "function": {
-            "description": desc, "parameters": {"type": "object", "properties": props, "required": req or []}}}

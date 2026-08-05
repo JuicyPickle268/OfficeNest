@@ -39,3 +39,21 @@ class BaseSkill(ABC):
     def name(self) -> str:
         """Skill 名称，用于日志标识。"""
         ...
+
+    @staticmethod
+    def _schema(desc: str, properties: dict, required: list[str] | None = None) -> dict:
+        """构建 OpenAI function-calling 格式的工具 schema。"""
+        return {
+            "type": "function",
+            "function": {
+                "description": desc,
+                "parameters": {
+                    "type": "object",
+                    "properties": properties,
+                    "required": required or [],
+                }
+            }
+        }
+
+    # 旧命名别名（部分 Skill 用 _s，统一收敛到 _schema）
+    _s = _schema

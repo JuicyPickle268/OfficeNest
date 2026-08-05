@@ -100,10 +100,3 @@ class ChartSkill(BaseSkill):
         for ch in col_str:
             col = col * 26 + (ord(ch) - ord('A') + 1)
         return col, int(row_str)
-
-    @staticmethod
-    def _schema(desc: str, properties: dict, required: list[str] | None = None) -> dict:
-        return {"type": "function", "function": {
-            "description": desc,
-            "parameters": {"type": "object", "properties": properties, "required": required or []}
-        }}
