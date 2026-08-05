@@ -61,6 +61,17 @@ class VisionQueue:
         return [{"id": r[0], "prompt": r[1][:100], "result": r[2][:500],
                  "error": r[3][:200], "status": r[4]} for r in rows]
 
+    def get_result(self, task_id: str) -> dict | None:
+        """按任务 ID 获取结果（done 返回内容，pending 返回状态）。"""
+        row = self._conn.execute(
+            "SELECT id, prompt, result, error, status FROM vision_queue WHERE id=?",
+            (task_id,)
+        ).fetchone()
+        if not row:
+            return None
+        return {"id": row[0], "prompt": row[1][:100], "result": row[2],
+                "error": row[3], "status": row[4]}
+
     def clear(self):
         """清空已完成的任务。"""
         self._conn.execute("DELETE FROM vision_queue WHERE status IN ('done','failed')")

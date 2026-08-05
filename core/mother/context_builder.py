@@ -27,6 +27,7 @@ class ContextBuilder:
 - 操作本地 Excel 文件（创建、读取、编辑、分析、格式化、图表生成）
 - 操作本地 Word 文件（生成报告、替换占位符、填充表格、批量生成、读取文档）
 - 📄 `pdf_read`：提取 PDF 文本。`pdf_analyze`：GLM 视觉分析扫描件/图片型 PDF。pdf_read 返回空时自动用 pdf_analyze读取 PDF 文本，GLM 分析页面布局
+- 📄 超长 PDF：用 `pdf_read(start_page=...)` 分段读文本页；扫描件用 `pdf_analyze_range(start,end)` 批量入队 → `vision_get_result(任务ID)` 逐个取结果，不要逐页调 pdf_analyze，不要反复轮询 vision_status
 - 🔍 联网搜索：`global_search`全网搜索，`zhihu_search`知乎站内，`web_search`免费通用
 - 📁 文件管理：`file_list_dir`浏览、`file_search`全盘搜、`file_copy`复制、`file_move`移动、`file_delete`删除、`file_open`打开
 - ⚡ `powershell_run`：执行 PowerShell 命令（需用户确认）

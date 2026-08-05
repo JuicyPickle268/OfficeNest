@@ -20,7 +20,6 @@ class VisionSkill(BaseSkill):
         )
         self._llm = llm_client
         self._queue = queue
-        self._call_count = 0  # 同一轮调用计数器
 
     @property
     def name(self) -> str:
@@ -50,16 +49,30 @@ class VisionSkill(BaseSkill):
                  "filepath": {"type": "string", "description": "文件路径"},
              }, ["filepath"])},
             {"name": "pdf_read", "fn": self.pdf_read,
-             "schema": self._s("读取 PDF 文件文本内容（支持简历、合同、报表）", {
+             "schema": self._s("读取 PDF 文件文本内容（支持简历、合同、报表）。超长 PDF 用 start_page 分段读，不要一次读全部", {
                  "filepath": {"type": "string", "description": "PDF 文件路径"},
-                 "max_pages": {"type": "integer", "description": "最大读取页数，默认10"},
+                 "max_pages": {"type": "integer", "description": "本次读取页数，默认10"},
+                 "start_page": {"type": "integer", "description": "起始页码（1开始），默认1"},
              }, ["filepath"])},
             {"name": "pdf_analyze", "fn": self.pdf_analyze,
-             "schema": self._s("用 GLM 视觉分析 PDF 页面布局/表格/图片", {
+             "schema": self._s("用 GLM 视觉分析 PDF 单页（扫描件/图片型 PDF）", {
                  "filepath": {"type": "string", "description": "PDF 文件路径"},
                  "prompt": {"type": "string", "description": "分析指令"},
                  "page": {"type": "integer", "description": "页码，默认0=全部"},
              }, ["filepath"])},
+            {"name": "pdf_analyze_range", "fn": self.pdf_analyze_range,
+             "schema": self._s("批量视觉分析 PDF 页码范围（扫描件专用）——所有页入队后台处理，返回任务ID列表。之后用 vision_get_result 逐个取结果。不要逐页调用 pdf_analyze", {
+                 "filepath": {"type": "string", "description": "PDF 文件路径"},
+                 "start_page": {"type": "integer", "description": "起始页码（1开始）"},
+                 "end_page": {"type": "integer", "description": "结束页码（含）"},
+                 "prompt": {"type": "string", "description": "分析指令，如'提取本页所有文字内容'"},
+             }, ["filepath", "start_page", "end_page"])},
+            {"name": "vision_get_result", "fn": self.vision_get_result,
+             "schema": self._s("按任务ID获取视觉分析结果（pdf_analyze_range 返回的 ID）——done 返回内容，pending 返回等待提示", {
+                 "task_id": {"type": "string", "description": "任务ID（vq_ 开头）"},
+             }, ["task_id"])},
+            {"name": "vision_status", "fn": self.vision_status,
+             "schema": self._s("查看视觉任务队列状态", {}, [])},
             {"name": "pdf_split", "fn": self.pdf_split,
              "schema": self._s("切割 PDF：提取指定页面范围为新文件", {
                  "filepath": {"type": "string", "description": "PDF 文件路径"},
@@ -156,12 +169,7 @@ class VisionSkill(BaseSkill):
     # ── 分析 ──
 
     async def vision_analyze(self, image_b64: str, prompt: str) -> str:
-        """调视觉模型分析图片。同一轮第3次起自动入队列。"""
-        self._call_count += 1
-        if self._queue and self._call_count > 2:
-            tid = self._queue.add(image_b64, prompt)
-            status = self._queue.status()
-            return f"📬 已加入视觉队列(#{status['pending']}) ID:{tid[:12]}"
+        """调视觉模型分析图片。直接同步等待结果（不入队——入队会导致拿不到结果）。"""
         try:
             return await self._vision.analyze(image_b64, prompt)
         except Exception as e:
@@ -318,8 +326,8 @@ class VisionSkill(BaseSkill):
         except Exception as e:
             return f"❌ 读取失败: {e}"
 
-    def pdf_read(self, filepath: str, max_pages: int = 10) -> str:
-        """PyMuPDF 提取 PDF 文本。"""
+    def pdf_read(self, filepath: str, max_pages: int = 10, start_page: int = 1) -> str:
+        """PyMuPDF 提取 PDF 文本。start_page 起读，支持长 PDF 分段读取。"""
         path = Path(filepath)
         if not path.is_absolute():
             for d in ["./workbooks", "./output", "."]:
@@ -330,17 +338,24 @@ class VisionSkill(BaseSkill):
         try:
             import fitz
             doc = fitz.open(str(path))
-            lines = [f"PDF: {path.name} | {doc.page_count}页"]
-            for i, page in enumerate(doc):
-                if i >= max_pages: break
+            total = doc.page_count
+            start = max(1, int(start_page or 1))
+            end = min(total, start + max_pages - 1)
+            lines = [f"PDF: {path.name} | {total}页（本次读第{start}-{end}页）"]
+            for i in range(start - 1, end):
+                page = doc[i]
                 text = page.get_text().strip()
                 if text:
                     lines.append(f"\n--- 第{i+1}页 ---")
-                    lines.append(text[:2000])
+                    lines.append(text[:3000])
                 else:
-                    lines.append(f"\n--- 第{i+1}页（无文本层，需用 pdf_analyze 视觉分析）---")
+                    lines.append(f"\n--- 第{i+1}页（无文本层，需用 pdf_analyze_range 视觉分析）---")
             doc.close()
-            return "\n".join(lines)[:12000]
+            result = "\n".join(lines)
+            # 超长截断，但保留页标记
+            if len(result) > 15000:
+                result = result[:15000] + f"\n…（已截断，可用 start_page 续读第{start + 5}页起）"
+            return result
         except Exception as e:
             return f"❌ PDF读取失败: {e}"
 
@@ -365,6 +380,53 @@ class VisionSkill(BaseSkill):
             return await self.vision_analyze(img_b64, prompt or f"分析这个PDF页面的内容和布局")
         except Exception as e:
             return f"❌ PDF分析失败: {e}"
+
+    async def pdf_analyze_range(self, filepath: str, start_page: int, end_page: int,
+                                 prompt: str = "") -> str:
+        """批量视觉分析 PDF 页码范围——全部入队，返回任务 ID 列表。"""
+        path = Path(filepath)
+        if not path.is_absolute():
+            for d in ["./workbooks", "./output", "."]:
+                p = Path(d) / path.name
+                if p.exists(): path = p; break
+        if not path.exists():
+            return f"❌ 文件不存在: {filepath}"
+        if not self._queue:
+            return "❌ 视觉队列未启用"
+        try:
+            import fitz
+            doc = fitz.open(str(path))
+            total = doc.page_count
+            s = max(1, int(start_page)); e = min(total, int(end_page))
+            if s > e or s > total:
+                doc.close(); return f"❌ 页码范围错误（共{total}页）"
+            tids = []
+            for i in range(s - 1, e):
+                pix = doc[i].get_pixmap(dpi=150)
+                img_b64 = base64.b64encode(pix.tobytes("png")).decode()
+                tid = self._queue.add(img_b64, prompt or f"提取PDF第{i+1}页的全部文字内容")
+                tids.append((i + 1, tid))
+            doc.close()
+            lines = [f"📬 已入队 {len(tids)} 页（第{s}-{e}页），任务ID列表:"]
+            for pg, tid in tids:
+                lines.append(f"  第{pg}页: {tid[:12]}")
+            lines.append(f"预计 {len(tids)*3} 秒完成。用 vision_get_result(任务ID) 取结果，一次一页。")
+            return "\n".join(lines)
+        except Exception as ex:
+            return f"❌ 批量分析失败: {ex}"
+
+    def vision_get_result(self, task_id: str) -> str:
+        """按任务 ID 取视觉分析结果。"""
+        if not self._queue:
+            return "❌ 视觉队列未启用"
+        r = self._queue.get_result(task_id.strip())
+        if not r:
+            return f"❌ 任务不存在: {task_id}（请确认 ID 完整，或以 vq_ 开头）"
+        if r["status"] == "done":
+            return f"✅ 第{task_id[:12]}页分析完成:\n{r['result']}"
+        if r["status"] == "failed":
+            return f"❌ 第{task_id[:12]}页分析失败: {r['error']}"
+        return f"⏳ 第{task_id[:12]}页还在处理中（{r['status']}），稍后再查"
 
     def pdf_split(self, filepath: str, output: str, start_page: int, end_page: int) -> str:
         path = Path(filepath)
